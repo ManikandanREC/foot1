@@ -47,10 +47,22 @@ jobs:
       - name: Extract version / image name
         id: set-image-ref
         run: |
-          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
+          # read owner/repo from context and convert to lowercase to satisfy registry rules
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+
+          OWNER_LOWER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          REPO_LOWER=$(echo "$REPO"  | tr '[:upper:]' '[:lower:]')
+
+          IMAGE_NAME="ghcr.io/${OWNER_LOWER}/${REPO_LOWER}"
           IMAGE_TAG=${GITHUB_SHA::8}
+
           echo "image-ref=${IMAGE_NAME}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "image-latest=${IMAGE_NAME}:latest" >> $GITHUB_OUTPUT
+
+          # optional debug output
+          echo "IMAGE_NAME=${IMAGE_NAME}"
+          echo "IMAGE_TAG=${IMAGE_TAG}"
 
       - name: Build and push Docker image (with cache)
         id: build-image
@@ -110,4 +122,4 @@ jobs:
         with:
           app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
           images: |
-            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
+            ${{ needs.build-and-test.outputs.image-latest }}
