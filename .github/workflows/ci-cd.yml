@@ -1,4 +1,4 @@
-name: CI / CD - Build, Test, Push, (Optional) Deploy
+name: CI / CD - Build, Test, Push, Deploy to Azure
 
 on:
   push:
@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image-ref: ${{ steps.set-image-ref.outputs.image-ref }}
+      image-latest: ${{ steps.set-image-ref.outputs.image-latest }}
 
     steps:
       - name: Checkout repo
@@ -93,16 +94,20 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: "Deploy to remote server (SSH) — optional"
-        if: ${{ secrets.SSH_PRIVATE_KEY != '' }}
-        uses: appleboy/ssh-action@v0.1.9
+      - name: Login to Azure
+        uses: azure/login@v1
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          script: |
-            IMAGE=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
-            docker pull $IMAGE
-            docker rm -f campus-app3 || true
-            docker run -d --name campus-app3 -p 5000:5000 --restart=always $IMAGE
+          creds: >
+            {
+              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+            }
+
+      - name: Deploy to Azure Web App (container)
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          images: |
+            ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
