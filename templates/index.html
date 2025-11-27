@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Campus Foot Traffic Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #heatmap, #barchart { width: 80%; height: 500px; margin: auto; margin-bottom: 50px; }
+        #metrics { margin-bottom: 20px; font-size: 18px; }
+        #metrics span { font-weight: bold; color: #d9534f; }
+    </style>
+</head>
+<body>
+    <h1>🏫 Real-Time Campus Foot Traffic Dashboard</h1>
+    <div id="metrics">
+        Total People on Campus: <span id="total-people">0</span> |
+        Most Crowded Zone: <span id="busiest-zone">-</span>
+    </div>
+    <p id="last-update">Last update: </p>
+
+    <div id="heatmap"></div>
+    <div id="barchart"></div>
+
+    <script>
+        const ZONE_COORDS = {
+            "Block A": [1, 4],
+            "Block B": [2, 4],
+            "Block C": [3, 4],
+            "Block D": [4, 4],
+            "Canteen": [2.5, 2],
+            "Dorm-1": [1, 1],
+            "Dorm-2": [4, 1]
+        };
+
+        // Fetch now supports both older array response and new snapshot { timestamp, zones }
+        async function fetchData() {
+            const res = await fetch("/get_data", { cache: "no-store" });
+            const data = await res.json();
+            // If server returns snapshot object with "zones", use it
+            if (data && data.zones && Array.isArray(data.zones)) {
+                return { traffic: data.zones, timestamp: data.timestamp || new Date().toLocaleTimeString() };
+            }
+            // Otherwise assume old format (array)
+            return { traffic: data, timestamp: new Date().toLocaleTimeString() };
+        }
+
+        async function drawPlots() {
+            const resp = await fetchData();
+            const traffic = resp.traffic;
+            const serverTimestamp = resp.timestamp;
+
+            // --- Compute total and busiest zone ---
+            const totalPeople = traffic.reduce((sum, z) => sum + z.total_foot_count, 0);
+            let busiest = traffic[0]?.zone || "-";
+            let maxCount = traffic[0]?.total_foot_count || 0;
+            traffic.forEach(z => {
+                if(z.total_foot_count > maxCount) {
+                    maxCount = z.total_foot_count;
+                    busiest = z.zone;
+                }
+            });
+            document.getElementById("total-people").innerText = totalPeople;
+            document.getElementById("busiest-zone").innerText = busiest;
+
+            // --- Heatmap ---
+            const x = [], y = [], z = [], text = [];
+            traffic.forEach(zone => {
+                const coord = ZONE_COORDS[zone.zone];
+                x.push(coord[0]);
+                y.push(coord[1]);
+                z.push(zone.total_foot_count);
+                text.push(`${zone.zone}: ${zone.total_foot_count} people`);
+            });
+
+            const heatmapTrace = {
+                x: x,
+                y: y,
+                z: z,
+                text: text,
+                type: 'heatmap',
+                colorscale: 'YlOrRd',
+                showscale: true
+            };
+
+            const heatmapLayout = {
+                title: 'Campus Heatmap',
+                xaxis: { title: 'X-axis' },
+                yaxis: { title: 'Y-axis' }
+            };
+
+            Plotly.newPlot('heatmap', [heatmapTrace], heatmapLayout);
+
+            // --- Bar Chart ---
+            const barTrace = {
+                x: traffic.map(t => t.zone),
+                y: traffic.map(t => t.total_foot_count),
+                type: 'bar',
+                marker: { color: 'orange' }
+            };
+
+            const barLayout = {
+                title: 'Current Foot Traffic per Zone',
+                yaxis: { title: 'Number of People' }
+            };
+
+            Plotly.newPlot('barchart', [barTrace], barLayout);
+
+            document.getElementById("last-update").innerText =
+                "Last update: " + serverTimestamp;
+        }
+
+        drawPlots();
+        setInterval(drawPlots, 5000);
+    </script>
+</body>
+</html>
